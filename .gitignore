@@ -1,0 +1,14 @@
+# Ignore virtual environment
+venv/
+
+# Ignore compiled Python files
+*.pyc
+
+# Ignore logs
+*.log
+
+# Ignore sensitive credentials
+credentials.json
+secret_key.txt
+
+# Ignore any other files or directories you don't want to track
