@@ -2,8 +2,110 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import datetime
+import requests
+from bs4 import BeautifulSoup
+import re
 # import talib
+import os
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+}
 moving_averages = {}
+excel_data = {}
+def Institutional_net_buy(stock_symbol):
+    # 定义目标网页链接
+    url = f"https://tw.stock.yahoo.com/quote/{stock_symbol}/broker-trading"
+    print(url)
+    response = requests.get(url, headers=headers)
+
+
+    # 发送HTTP请求并获取页面内容
+    html_content = response.content
+
+    # 使用Beautiful Soup解析页面内容
+    soup = BeautifulSoup(html_content, "html.parser")
+    # 查找具有特定类名的元素
+    target_elements = soup.select("div.Fz\(24px\).Fz\(18px\)--mobile.Fw\(600\).H\(28px\).H\(a\)--mobile.Mt\(4px\)[class*='c-trend']")
+    print("target_elements", target_elements)
+    if target_elements:
+        content = target_elements[0].get_text()
+        moving_averages['日主力'] = content
+    else:
+        moving_averages['日主力'] = "未找到目标元素"
+
+def Foreign_institutional_net_BuySell(stock_symbol):
+    URL = f"https://tw.stock.yahoo.com/quote/{stock_symbol}/institutional-trading"
+    print (URL)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}  # 設置一個User-Agent，避免被網站阻擋
+
+    response = requests.get(URL, headers=headers)
+
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, 'html.parser')
+        target_divs = soup.find_all('div', class_='Fxg(1) Fxs(1) Fxb(0%) Miw($w-table-cell-min-width) Ta(end) Mend($m-table-cell-space) Mend(0):lc')
+        
+        if target_divs:
+            count = 0
+            for target_div in target_divs:
+                count += 1
+                span_data = target_div.find('span', class_='Jc(fe)')
+                if span_data:
+                    if count == 28:
+                        WeeklyForeignInstitutionalInvestors = span_data.text
+    else:
+        print(f"網頁回應錯誤，HTTP 狀態碼: {response.status_code}")
+
+    moving_averages['周外資'] = WeeklyForeignInstitutionalInvestors
+
+def seventyTwoDay_moving_average(stock_symbol):
+    symbol_before_dot = stock_symbol.split(".")[0]
+    URL = f"https://fubon-ebrokerdj.fbs.com.tw/Z/ZC/ZCW/ZCWG/ZCWG_{symbol_before_dot}_72.djhtm"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+
+    response = requests.get(URL, headers=headers)
+
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # 從所有的<script>標籤中搜尋GetBcdData的呼叫
+    scripts = soup.find_all('script')
+    for script in scripts:
+        if script.string:
+            matches = re.search(r'GetBcdData\(\'(.*?)\'\)', script.string)
+            if matches:
+                data = matches.group(1)
+                # 使用空格分割數據
+                part1, part2 = data.split(' ')
+
+    numbers_part2 = [int(n) for n in part2.split(",")]
+
+    # 使用sum函數計算總和
+    total = sum(numbers_part2)
+    tenp = total * 0.1
+    # 从第一个数开始减去temp
+    for i, num in enumerate(numbers_part2):
+        tenp -= num
+        if tenp <= 0:  # 当temp小于或等于0时，记录索引并退出循环
+            index = i
+            break
+    numbers_part1 = [float(n) for n in part1.split(",")]
+    lower = numbers_part1[index]
+    moving_averages['72分下'] = lower
+    numbers_part2_reversed = numbers_part2[::-1]  # 反转数列
+    tenp = total * 0.1
+
+    # 从最后一个数开始减去temp
+    for i, num in enumerate(numbers_part2_reversed):
+        tenp -= num
+        if tenp <= 0:
+            index_reversed = i
+            break
+
+    numbers_part1_reversed = numbers_part1[::-1]
+    upper = numbers_part1_reversed[index_reversed]
+    moving_averages['72分上'] = upper
+
 
 def get_avg_prices(df):
     # 計算當下的均線（月線、季線、年線）
@@ -90,7 +192,7 @@ def calculate_daily_macd(df):
     daily_OSC = df['OSC'].iloc[-1]
     moving_averages['daily_OSC'] = "{:.2f}".format(daily_OSC)
 
-def calculate_weekly_macd():
+def calculate_weekly_macd(stock_symbol):
     # 使用 yf.download 函式獲取週歷史股價數據
 
     df = yf.download(stock_symbol, interval='1wk')
@@ -138,7 +240,7 @@ def calculate_RSI14(df):
     moving_averages['daily_RSI14'] = latest_rsi
 
 
-def calculate_weekly_RSI14():
+def calculate_weekly_RSI14(stock_symbol):
     df = yf.download(stock_symbol, interval='1wk')
     # 計算價格變動
     df['Price Change'] = df['Close'].diff()
@@ -160,61 +262,74 @@ def calculate_weekly_RSI14():
     print("weekly_RSI14", latest_rsi)
     moving_averages['weekly_RSI14'] = latest_rsi
 
-# 假設你有一個包含股票價格數據的 DataFrame，名稱為 stock_data
+def trend_line(moving_averages):
+    def get_trend(value):
+        # Try to convert the value to float, if fails, return '-'
+        if value == '-':
+            return '-'
+        elif value == '+':
+            return '+'
+        try:
+            print("value", value)
+            float_val = float(value.replace(',', '').split(' ')[0])
+            print("float_val", float_val)
+            return '+' if float_val > 0 else '-'
+        except:
+            return '-'
 
+    columns_to_check = ['日主力', '周外資','月線>現價', '季線>現價', '年線>現價', '量MA5>20', '連3日>MA5', 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14']
 
+    combined_trend = ''.join([get_trend(moving_averages[col]) for col in columns_to_check])
+    print("combined_trend", combined_trend)
+    ##寫到這裡******* 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14' 要看正負，把趨勢寫入excel 
+    moving_averages['趨勢'] = combined_trend
+    positive_count = combined_trend.count('+')
+    negative_count = combined_trend.count('-')
+    moving_averages['正加總'] = positive_count
+    moving_averages['負加總'] = negative_count
 
-# Calculate the RSI
-# def calculate_rsi(df, period=14):
-#     delta = df['Close'].diff()
-#     gain = (delta.where(delta > 0, 0)).fillna(0)
-#     loss = (-delta.where(delta < 0, 0)).fillna(0)
-
-#     avg_gain = gain.rolling(window=period).mean()
-#     avg_loss = loss.rolling(window=period).mean()
-
-#     relative_strength = avg_gain / avg_loss
-#     rsi = 100 - (100 / (1 + relative_strength))
+def save_to_excel(excel_data):
+    # Convert the dictionary to a pandas DataFrame
+    df = pd.DataFrame(excel_data).T
     
-#     return rsi
-
-
-
-# Calculate the OSC
-# def calculate_osc(df, short_period=9, long_period=14):
-#     short_rsi = df['RSI'].rolling(window=short_period).mean()
-#     long_rsi = df['RSI'].rolling(window=long_period).mean()
+    # Desired column order
+    desired_order = ['日主力', '周外資', '72分上', '72分下', '月線', '季線', '年線', '量MA5>20', '連3日>MA5', 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14','趨勢','正加總','負加總']
     
-#     osc = (short_rsi - long_rsi).iloc[-1]
-#     print("osc:",osc)
-#     return osc
+    # Rearrange columns based on desired order
+    df = df[desired_order]
+    
+    # Get the current directory of the .exe or script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Create the absolute path
+    file_path = os.path.join(current_dir, "output.xlsx")
+    
+    # Save to Excel
+    df.to_excel(file_path, engine='openpyxl')
+    print(f"Saved to {file_path}")
 
-# 獲取並顯示0056.TW的股票資訊
-stock_symbol = "0056.TW"
-# 使用 yf.download 函式獲取歷史股價數據
-df = yf.download(stock_symbol)
-get_avg_prices(df)
-calculate_and_get_trade_indicators(df)
-calculate_daily_macd(df)
-calculate_weekly_macd()
-calculate_RSI14(df)
-calculate_weekly_RSI14()
-# df['RSI'] = calculate_rsi(df)
-# df['OSC'] = calculate_osc(df)
-print(moving_averages)
-
-# 获取0056.TW的股票对象
-stock = yf.Ticker("0056.TW")
-
-# 获取历史交易数据
-history = stock.history(period="1d")
-
-# 计算买入和卖出数量差
-buy_quantity = history['Volume'][history['Close'] > history['Open']].sum()
-sell_quantity = history['Volume'][history['Close'] < history['Open']].sum()
-
-difference = buy_quantity - sell_quantity
-
-print(f"买入张数：{buy_quantity}")
-print(f"卖出张数：{sell_quantity}")
-print(f"买入和卖出张数差：{difference}")
+def run_func(stock_symbols):
+    # 獲取並顯示0056.TW的股票資訊
+    print("print",stock_symbols)
+    for stock_symbol in stock_symbols:
+        moving_averages.clear()
+    # 使用 yf.download 函式獲取歷史股價數據
+        stock_symbol = stock_symbol + ".TW"
+        print(stock_symbol)
+        df = yf.download(stock_symbol)
+        get_avg_prices(df)
+        calculate_and_get_trade_indicators(df)
+        calculate_daily_macd(df)
+        print("----------日MACD----------")
+        calculate_weekly_macd(stock_symbol)
+        print("----------日RSI14----------")
+        calculate_RSI14(df)
+        print("----------週RSI14----------")
+        calculate_weekly_RSI14(stock_symbol)
+        Institutional_net_buy(stock_symbol)
+        Foreign_institutional_net_BuySell(stock_symbol)
+        seventyTwoDay_moving_average(stock_symbol)
+        trend_line(moving_averages)
+        excel_data[stock_symbol] = moving_averages.copy()
+        print("moving_averages", moving_averages)
+    save_to_excel(excel_data)
