@@ -12,13 +12,8 @@ headers = {
 }
 moving_averages = {}
 excel_data = {}
-def Institutional_net_buy(stock_symbol):
-    # 定义目标网页链接
-    url = f"https://tw.stock.yahoo.com/quote/{stock_symbol}/broker-trading"
-    print(url)
-    response = requests.get(url, headers=headers)
 
-
+def Institutional_net_buy_data(response):
     # 发送HTTP请求并获取页面内容
     html_content = response.content
 
@@ -33,14 +28,16 @@ def Institutional_net_buy(stock_symbol):
     else:
         moving_averages['日主力'] = "未找到目标元素"
 
-def Foreign_institutional_net_BuySell(stock_symbol):
-    URL = f"https://tw.stock.yahoo.com/quote/{stock_symbol}/institutional-trading"
-    print (URL)
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}  # 設置一個User-Agent，避免被網站阻擋
 
-    response = requests.get(URL, headers=headers)
+# 計算日主力
+def Institutional_net_buy(stock_symbol):
+    # 定义目标网页链接
+    url = f"https://tw.stock.yahoo.com/quote/{stock_symbol}/broker-trading"
+    print(url)
+    response = requests.get(url, headers=headers)
+    Institutional_net_buy_data(response)
 
+def Foreign_institutional_net_BuySell_data(response):
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, 'html.parser')
         target_divs = soup.find_all('div', class_='Fxg(1) Fxs(1) Fxb(0%) Miw($w-table-cell-min-width) Ta(end) Mend($m-table-cell-space) Mend(0):lc')
@@ -58,14 +55,16 @@ def Foreign_institutional_net_BuySell(stock_symbol):
 
     moving_averages['周外資'] = WeeklyForeignInstitutionalInvestors
 
-def seventyTwoDay_moving_average(stock_symbol):
-    symbol_before_dot = stock_symbol.split(".")[0]
-    URL = f"https://fubon-ebrokerdj.fbs.com.tw/Z/ZC/ZCW/ZCWG/ZCWG_{symbol_before_dot}_72.djhtm"
+def Foreign_institutional_net_BuySell(stock_symbol):
+    URL = f"https://tw.stock.yahoo.com/quote/{stock_symbol}/institutional-trading"
+    print (URL)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}  # 設置一個User-Agent，避免被網站阻擋
 
     response = requests.get(URL, headers=headers)
-
+    Foreign_institutional_net_BuySell_data(response)
+    
+def seventyTwoDay_moving_average_data(response):
     soup = BeautifulSoup(response.content, 'html.parser')
 
     # 從所有的<script>標籤中搜尋GetBcdData的呼叫
@@ -105,6 +104,15 @@ def seventyTwoDay_moving_average(stock_symbol):
     numbers_part1_reversed = numbers_part1[::-1]
     upper = numbers_part1_reversed[index_reversed]
     moving_averages['72分上'] = upper
+
+def seventyTwoDay_moving_average(stock_symbol):
+    symbol_before_dot = stock_symbol.split(".")[0]
+    URL = f"https://fubon-ebrokerdj.fbs.com.tw/Z/ZC/ZCW/ZCWG/ZCWG_{symbol_before_dot}_72.djhtm"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+
+    response = requests.get(URL, headers=headers)
+    seventyTwoDay_moving_average_data(response)
 
 
 def get_avg_prices(df):
@@ -277,7 +285,7 @@ def trend_line(moving_averages):
         except:
             return '-'
 
-    columns_to_check = ['日主力', '周外資','月線>現價', '季線>現價', '年線>現價', '量MA5>20', '連3日>MA5', 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14']
+    columns_to_check = ['現價', '日主力', '周外資','月線>現價', '季線>現價', '年線>現價', '量MA5>20', '連3日>MA5', 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14']
 
     combined_trend = ''.join([get_trend(moving_averages[col]) for col in columns_to_check])
     print("combined_trend", combined_trend)
@@ -293,7 +301,7 @@ def save_to_excel(excel_data):
     df = pd.DataFrame(excel_data).T
     
     # Desired column order
-    desired_order = ['日主力', '周外資', '72分上', '72分下', '月線', '季線', '年線', '量MA5>20', '連3日>MA5', 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14','趨勢','正加總','負加總']
+    desired_order = ['現價', '日主力', '周外資', '72分上', '72分下', '月線', '季線', '年線', '量MA5>20', '連3日>MA5', 'daily_MACD', 'daily_RSI14', 'weekly_MACD', 'weekly_RSI14','趨勢','正加總','負加總']
     
     # Rearrange columns based on desired order
     df = df[desired_order]
@@ -308,28 +316,134 @@ def save_to_excel(excel_data):
     df.to_excel(file_path, engine='openpyxl')
     print(f"Saved to {file_path}")
 
+
+def get_current_price(url, type):
+    # Make a GET request to fetch the raw HTML content
+    response = requests.get(url)
+
+    # If the request is successful
+    if response.status_code == 200:
+        # Parse the content with BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Assuming you're looking for the first span with the class 'Fz(32px) Fw(b) Lh(1) Mend(16px)'
+        target_span = soup.find('span', class_='Fz(32px) Fw(b) Lh(1) Mend(16px) D(f) Ai(c) C($c-trend-down)')
+        if target_span:
+            # Extract the text inside the span
+            value = target_span.text
+            # moving_averages['現價'] = value
+            # Assuming 'value' is the variable containing the value for '現價'
+            moving_averages = {
+                '現價': value,
+                '日主力': '',
+                '周外資': '',
+                '72分上': '',
+                '72分下': '',
+                '月線': '',
+                '季線': '',
+                '年線': '',
+                '量MA5>20': '',
+                '連3日>MA5': '',
+                'daily_MACD': '',
+                'daily_RSI14': '',
+                'weekly_MACD': '',
+                'weekly_RSI14': '',
+                '趨勢': '',
+                '正加總': '',
+                '負加總': ''
+            }
+
+            print(value)
+            if type == '^TWII':
+                print("TWII")
+                excel_data["TWII"] = moving_averages.copy()
+            elif type == '^TWOII':
+                print("TWOII")
+                excel_data["TWOII"] = moving_averages.copy()
+
+        else:
+            print("Value not found.")
+        target_span = soup.find('span', class_='Fz(32px) Fw(b) Lh(1) Mend(16px) D(f) Ai(c) C($c-trend-up)')
+        if target_span:
+            # Extract the text inside the span
+            value = target_span.text
+            # moving_averages['現價'] = value
+            # Assuming 'value' is the variable containing the value for '現價'
+            moving_averages = {
+                '現價': value,
+                '日主力': '',
+                '周外資': '',
+                '72分上': '',
+                '72分下': '',
+                '月線': '',
+                '季線': '',
+                '年線': '',
+                '量MA5>20': '',
+                '連3日>MA5': '',
+                'daily_MACD': '',
+                'daily_RSI14': '',
+                'weekly_MACD': '',
+                'weekly_RSI14': '',
+                '趨勢': '',
+                '正加總': '',
+                '負加總': ''
+            }
+
+            print(value)
+            if type == '^TWII':
+                print("TWII")
+                excel_data["TWII"] = moving_averages.copy()
+            elif type == '^TWOII':
+                print("TWOII")
+                excel_data["TWOII"] = moving_averages.copy()
+
+        else:
+            print("Value not found.")
+    else:
+        print("Failed to retrieve the page.")
+
+
 def run_func(stock_symbols):
+
+    # test
+    # The URL of the page you want to scrape
+    moving_averages.clear()
+    url = 'https://tw.stock.yahoo.com/quote/^TWII'
+    get_current_price(url, '^TWII')
+    moving_averages.clear()
+    url = 'https://tw.stock.yahoo.com/quote/^TWOII'
+    get_current_price(url, '^TWOII')
+
+
     # 獲取並顯示0056.TW的股票資訊
+    print("stock_symbols")
     print("print",stock_symbols)
     for stock_symbol in stock_symbols:
         moving_averages.clear()
-    # 使用 yf.download 函式獲取歷史股價數據
-        stock_symbol = stock_symbol + ".TW"
-        print(stock_symbol)
-        df = yf.download(stock_symbol)
+        if stock_symbol[1] == 'Listed Stock':
+            print('Listed Stock')
+            stock_number = stock_symbol[0] + ".TW"
+        elif stock_symbol[1] == 'OTC Stock':
+            print('OTC Stock')
+            stock_number = stock_symbol[0] + ".TWO"
+        else:
+            continue
+        print(stock_number)
+        # 使用 yf.download 函式獲取歷史股價數據
+        df = yf.download(stock_number)
         get_avg_prices(df)
         calculate_and_get_trade_indicators(df)
         calculate_daily_macd(df)
         print("----------日MACD----------")
-        calculate_weekly_macd(stock_symbol)
+        calculate_weekly_macd(stock_number)
         print("----------日RSI14----------")
         calculate_RSI14(df)
         print("----------週RSI14----------")
-        calculate_weekly_RSI14(stock_symbol)
-        Institutional_net_buy(stock_symbol)
-        Foreign_institutional_net_BuySell(stock_symbol)
-        seventyTwoDay_moving_average(stock_symbol)
+        calculate_weekly_RSI14(stock_number)
+        Institutional_net_buy(stock_number)
+        Foreign_institutional_net_BuySell(stock_number)
+        seventyTwoDay_moving_average(stock_number)
         trend_line(moving_averages)
-        excel_data[stock_symbol] = moving_averages.copy()
+        excel_data[stock_number] = moving_averages.copy()
         print("moving_averages", moving_averages)
     save_to_excel(excel_data)
