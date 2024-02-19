@@ -54,7 +54,7 @@ class NumberApp(App):
         hbox = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=50)
         
         # Create a new text input
-        new_text_input = TextInput(hint_text="Enter a number", multiline=False, input_filter='float', size_hint_x=0.5)
+        new_text_input = TextInput(hint_text="Enter a number", multiline=False, size_hint_x=0.5)
         self.text_inputs.append(new_text_input)
         # Create a dropdown menu (Spinner)
         spinner = Spinner(
